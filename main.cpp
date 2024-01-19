@@ -4,6 +4,7 @@
 #include <WiFi.h>
 //#include <WiFiClientSecure.h>
 #include <MQTT.h>
+#include "CircularBuffer.h"
 
 #include "config.h"
 
@@ -14,6 +15,7 @@ typedef char AddressString[17];
 void startTemperatureSensors();
 void writeAddress(char* out, uint8_t* addr);
 void sensorLoop();
+void publishLoop();
 bool startWiFiSTA();
 void mqttBegin();
 bool mqttPublishSensor(char* addr, float temp);
@@ -24,6 +26,7 @@ static OneWire oneWire(ONE_WIRE_BUS);
 static DallasTemperature sensors(&oneWire);
 static DeviceAddress sensorAddresses[MAX_SENSORS];
 static AddressString sensorAddressStrings[MAX_SENSORS];
+static CircularBuffer<float,HISTORY_SIZE> history[MAX_SENSORS];
 static uint8_t sensorAddressCount;
 static WiFiClient* client = nullptr;
 static MQTTClient* mqttClient = nullptr;
@@ -40,6 +43,7 @@ void setup() {
 
 void loop() {
     sensorLoop();
+    publishLoop();
     mqttLoop();
 }
 
@@ -71,14 +75,36 @@ void writeAddress(char* out, uint8_t* addr) {
 }
 
 void sensorLoop() {
-    sensors.requestTemperatures();
-    for (uint8_t i=0; i<sensorAddressCount; i++) {
-        uint8_t* addr = sensorAddresses[i];
-        char* addrString = sensorAddressStrings[i];
-        float temp = sensors.getTempC(addr);
-        mqttPublishSensor(addrString, temp);
+    static uint32_t lastReading = 0;
+    if (millis() - lastReading > SAMPLE_RATE) {
+        sensors.requestTemperatures();
+        for (uint8_t i=0; i<sensorAddressCount; i++) {
+            uint8_t* addr = sensorAddresses[i];
+            float temp = sensors.getTempC(addr);
+            history[i].push(temp);
+        }
+        lastReading = millis();
     }
-    delay(PUBLISH_RATE);
+}
+
+void publishLoop() {
+    static uint32_t lastPublication = 0;
+    if (millis() - lastPublication > PUBLISH_RATE) {
+        for (uint8_t i=0; i<sensorAddressCount; i++) {
+            float avgTemp = 0.0;
+            CircularBuffer<float,HISTORY_SIZE> &hist = history[i];
+            uint8_t size = hist.size();
+            for (int j=0; j<size; j++) {
+              float temp = hist[j];
+              avgTemp += temp;
+            }
+            avgTemp /= size;
+
+            char* addrString = sensorAddressStrings[i];
+            mqttPublishSensor(addrString, avgTemp);
+        }
+        lastPublication = millis();
+    }
 }
 
 bool startWiFiSTA() {
