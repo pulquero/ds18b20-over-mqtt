@@ -9,6 +9,10 @@
 
 #define MQTT_PORT 1883
 
+#define MQTT_USER "user"
+
+#define MQTT_PASSWORD "pass"
+
 #define ONE_WIRE_BUS 13
 
 #define MAX_SENSORS 4

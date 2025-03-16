@@ -171,7 +171,7 @@ bool ensureConnected() {
     LOGMEM("pre-MQTT-ensureConnected");
     LOGD("WiFi station status: %d", WiFi.status());
     //loadCertificates(client);
-    isConn = mqttClient->connect(HOSTNAME);
+    isConn = mqttClient->connect(HOSTNAME, MQTT_USER, MQTT_PASSWORD);
     LOGD("MQTT connection: %d", mqttClient->returnCode());
     if (isConn) {
       lastAttempt = 0;
